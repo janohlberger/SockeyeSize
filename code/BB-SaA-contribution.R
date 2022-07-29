@@ -10,7 +10,7 @@ homeDir<-here::here()
 setwd(homeDir)
 
 ##============================================================## settings
-year.type<-"run" ## "brood" or "run"
+year.type<-"run" ## "brood" (contributions) or "run" (covariate model)
 nYref<-5 ## number of years to compare in early and late periods
 min.per.age<-0.1 ## minimum percent of samples per age and system 
 

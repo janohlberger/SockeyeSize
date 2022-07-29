@@ -4,12 +4,8 @@
 ##                                                                      ##
 ##======================================================================##
 pkgs<-c("here","tidyr","dplyr","readxl","pracma","MuMIn","Hmisc","stringr", "relaimpo","visreg","RColorBrewer","ggplot2","viridis")
-
-# pkgs<-c("here","tidyr","dplyr","readxl","nlme","visreg","MuMIn","AICcmodavg","pracma","Hmisc","relaimpo","sjPlot","ggeffects","glmmTMB","mgcv","ggplot2", "gridExtra","grid","performance","mgcViz","itsadug","gratia","TSA","RColorBrewer","scales","mFilter","WaveletComp","tsm","viridis","scico","here")
-
 if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }
 invisible(lapply(pkgs,library,character.only=T))
-
 homeDir<-here::here()
 setwd(homeDir)
 
@@ -247,95 +243,98 @@ aic_table[1:n_top_mods,]
 ##======================================================================##
 ## out-of-sample predictions on randomly drawn training and test data
 ##=========================================================## model forms
-mod_list<-get.models(mod_select,subset=delta<2) 
-nM<-length(mod_list)
-test_forms<-all_terms<-list()
-for(i in 1:nM) {
-mymod<-mod_list[[i]]
-terms<-attributes(mymod$terms)$term.labels
-all_terms[[i]]<-terms
-nterms<-length(terms)
-if(nterms==0) { my_mod<-formula("SaA_anomaly~1") } else { my_mod<-formula(paste("SaA_anomaly~",paste0(terms,collapse="+"))) }
-test_forms[[i]]<-my_mod
+run_cross_validation<-FALSE
+if(run_cross_validation) {
+  mod_list<-get.models(mod_select,subset=delta<2) 
+  nM<-length(mod_list)
+  test_forms<-all_terms<-list()
+  for(i in 1:nM) {
+    mymod<-mod_list[[i]]
+    terms<-attributes(mymod$terms)$term.labels
+    all_terms[[i]]<-terms
+    nterms<-length(terms)
+    if(nterms==0) { my_mod<-formula("SaA_anomaly~1") } else { my_mod<-formula(paste("SaA_anomaly~",paste0(terms,collapse="+"))) }
+    test_forms[[i]]<-my_mod
+  }
+  ## exclude models that include quadratic without linear effect of predictor
+  test_forms<-test_forms[-c(7,9,15)] 
+  
+  ##=====================================================## cross-validation 
+  nS<-1000 ## number of runs 
+  nMod<-length(test_forms)
+  seeds<-sample(seq(1e6),nS,replace=FALSE)
+  RMSE<-array(dim=c(nS,nMod))
+  formulas<-list()
+  cnt<-1
+  '%!in%'<-function(x,y)!('%in%'(x,y))
+  start.time<-Sys.time()
+  for(i in 1:nS) {
+    set.seed(seeds[cnt])
+    train<-sort(sample(seq(nY),round(0.75*nY),replace=F)) ## use x% to train
+    traindata<-data[train,] 
+    test<-seq(nY)[seq(nY) %!in% train]
+    testdata<-data[test,]
+    ##------------------------------------------------## loop model structures
+    for(j in 1:nMod) { 
+      test_mod<-form<-test_forms[[j]]
+      term_list<-strsplit(as.character(test_mod)," ")[[3]]
+      term_list<-term_list[term_list!="+"]
+      trainmod<-gls(test_mod,data=traindata,method="ML")
+      predicted<-predict(trainmod,newdata=testdata,se.fit=T,type="response")
+      ##--------------------------------------------## root mean squared error
+      pred<-as.numeric(predicted$fit)
+      true<-as.numeric(testdata$SaA_anomaly)
+      RMSE[i,j]<-sqrt(sum((pred-true)^2)/nY)
+      ##------------------------------------------------------## save formulas
+      prev_mod<-trainmod
+      save_terms<-attributes(prev_mod)$namBetaFull[-1]
+      allterms<-paste(save_terms,collapse="+") 
+      nt<-length(allterms)
+      new_mod<-formula(paste("~",allterms,sep="")) 
+      formulas[[j]]<-new_mod
+    } ## end loop over models (j)
+    cnt<-cnt+1
+  } ## end stochastic loop (i)
+  ##----------------------------------------------------------## elapsed time
+  end.time<-Sys.time()
+  elapsed<-end.time-start.time
+  print(round(elapsed,2)) ## ~30 min for 10,000 draws
+  ##-----------------------------------------------------## model forms short
+  mod_forms<-unlist(test_forms)
+  mod_forms<-gsub("SaA_anomaly","",mod_forms)
+  mod_forms<-gsub("total_return","R",mod_forms)
+  mod_forms<-gsub("pink_tot_num_lag1","P",mod_forms)
+  mod_forms<-gsub("AIwinT:regime","W:r",mod_forms)
+  mod_forms<-gsub("BSsumT_lag1:regime","S:r",mod_forms)
+  mod_forms<-gsub("AIwinT","W",mod_forms)
+  mod_forms<-gsub("BSsumT_lag1","S",mod_forms)
+  mod_forms<-gsub("1","",mod_forms)
+  mod_forms<-gsub(" ","",mod_forms)
+  mod_forms<-unlist(mod_forms)
+  ##----------------------------------------------------------## median RMSEs
+  med_RMSE<-apply(RMSE,2,function(x) median(x,na.rm=T))
+  med_RMSE<-round(med_RMSE,4)
+  names(med_RMSE)<-mod_forms
+  data.frame(med_RMSE)
+  
+  med_RMSE<-med_RMSE[order(med_RMSE)]
+  med_RMSE
+  ##------------------------------------------------------------## sort RMSEs
+  RMSE_pl<-data.frame(RMSE)
+  names(RMSE_pl)<-mod_forms
+  RMSE_pl<-RMSE_pl[,order(match(names(RMSE_pl),names(med_RMSE)))]
+  names_pl<-names(RMSE_pl)
+  
+  ##=============================================================## plot RMSE
+  pdf("Model_cross_validation.pdf",height=4,width=5)
+  par(mar=c(3,13,1,1),mgp=c(1.75,0.5,0),tcl=-0.3,las=1)
+  cols<-c("gray60",rep("gray90",nMod-1))
+  boxplot(RMSE_pl,axes=F,horizontal=T,range=1,outline=F,col=cols,lty=1,lwd=0.5, xlim=c(0.5,nMod+0.5),pars=list(boxwex=0.5),pch=16,cex=0.25, ylab="",xlab="RMSE");box()
+  abline(v=median(RMSE_pl[,1]),lty=1,lwd=0.1)
+  axis(1,at=seq(1,6,0.5),labels=T,line=0,cex.axis=0.8)
+  axis(2,at=seq(1,nMod,1),labels=names_pl,line=0,cex.axis=0.8)
+  dev.off()
 }
-## exclude models that include quadratic without linear effect of predictor
-test_forms<-test_forms[-c(7,9,15)] 
-
-##=====================================================## cross-validation 
-nS<-1000 ## number of runs 
-nMod<-length(test_forms)
-seeds<-sample(seq(1e6),nS,replace=FALSE)
-RMSE<-array(dim=c(nS,nMod))
-formulas<-list()
-cnt<-1
-'%!in%'<-function(x,y)!('%in%'(x,y))
-start.time<-Sys.time()
-for(i in 1:nS) {
-  set.seed(seeds[cnt])
-  train<-sort(sample(seq(nY),round(0.75*nY),replace=F)) ## use x% to train
-  traindata<-data[train,] 
-  test<-seq(nY)[seq(nY) %!in% train]
-  testdata<-data[test,]
-  ##------------------------------------------------## loop model structures
-  for(j in 1:nMod) { 
-    test_mod<-form<-test_forms[[j]]
-    term_list<-strsplit(as.character(test_mod)," ")[[3]]
-    term_list<-term_list[term_list!="+"]
-    trainmod<-gls(test_mod,data=traindata,method="ML")
-    predicted<-predict(trainmod,newdata=testdata,se.fit=T,type="response")
-    ##--------------------------------------------## root mean squared error
-    pred<-as.numeric(predicted$fit)
-    true<-as.numeric(testdata$SaA_anomaly)
-    RMSE[i,j]<-sqrt(sum((pred-true)^2)/nY)
-    ##------------------------------------------------------## save formulas
-    prev_mod<-trainmod
-    save_terms<-attributes(prev_mod)$namBetaFull[-1]
-    allterms<-paste(save_terms,collapse="+") 
-    nt<-length(allterms)
-    new_mod<-formula(paste("~",allterms,sep="")) 
-    formulas[[j]]<-new_mod
-  } ## end loop over models (j)
-  cnt<-cnt+1
-} ## end stochastic loop (i)
-##----------------------------------------------------------## elapsed time
-end.time<-Sys.time()
-elapsed<-end.time-start.time
-print(round(elapsed,2)) ## ~30 min for 10,000 draws
-##-----------------------------------------------------## model forms short
-mod_forms<-unlist(test_forms)
-mod_forms<-gsub("SaA_anomaly","",mod_forms)
-mod_forms<-gsub("total_return","R",mod_forms)
-mod_forms<-gsub("pink_tot_num_lag1","P",mod_forms)
-mod_forms<-gsub("AIwinT:regime","W:r",mod_forms)
-mod_forms<-gsub("BSsumT_lag1:regime","S:r",mod_forms)
-mod_forms<-gsub("AIwinT","W",mod_forms)
-mod_forms<-gsub("BSsumT_lag1","S",mod_forms)
-mod_forms<-gsub("1","",mod_forms)
-mod_forms<-gsub(" ","",mod_forms)
-mod_forms<-unlist(mod_forms)
-##----------------------------------------------------------## median RMSEs
-med_RMSE<-apply(RMSE,2,function(x) median(x,na.rm=T))
-med_RMSE<-round(med_RMSE,4)
-names(med_RMSE)<-mod_forms
-data.frame(med_RMSE)
-
-med_RMSE<-med_RMSE[order(med_RMSE)]
-med_RMSE
-##------------------------------------------------------------## sort RMSEs
-RMSE_pl<-data.frame(RMSE)
-names(RMSE_pl)<-mod_forms
-RMSE_pl<-RMSE_pl[,order(match(names(RMSE_pl),names(med_RMSE)))]
-names_pl<-names(RMSE_pl)
-
-##=============================================================## plot RMSE
-pdf("Model_cross_validation.pdf",height=4,width=5)
-par(mar=c(3,13,1,1),mgp=c(1.75,0.5,0),tcl=-0.3,las=1)
-cols<-c("gray60",rep("gray90",nMod-1))
-boxplot(RMSE_pl,axes=F,horizontal=T,range=1,outline=F,col=cols,lty=1,lwd=0.5, xlim=c(0.5,nMod+0.5),pars=list(boxwex=0.5),pch=16,cex=0.25, ylab="",xlab="RMSE");box()
-abline(v=median(RMSE_pl[,1]),lty=1,lwd=0.1)
-axis(1,at=seq(1,6,0.5),labels=T,line=0,cex.axis=0.8)
-axis(2,at=seq(1,nMod,1),labels=names_pl,line=0,cex.axis=0.8)
-dev.off()
 
 ##======================================================================##
 ##=================================================## final selected model
