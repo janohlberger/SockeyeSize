@@ -22,10 +22,10 @@ ages<-unique(data$age);nA<-length(ages)
 years<-unique(data$year);nY<-length(years)
 ##==================================================## mean size each year
 meansize_Y<-read.csv("Mean_size_BB_wide.csv")[,-1]
-meansize_YS<-read.csv("Mean_size_by_system.csv")[,-1] %>% select(year,all_of(rivers)) %>% data.frame
+meansize_YS<-read.csv("Mean_size_by_system.csv")[,-1] %>% dplyr::select(year,all_of(rivers)) %>% data.frame
 ##===================================## mean size-at-age anomaly each year
 SaA_anomaly_Y<-read.csv("SaA_anomaly_BB_wide.csv")[,-1]
-SaA_anomaly_YS<-read.csv("SaA_anomaly_by_system.csv")[,-1] %>% select(year,all_of(rivers)) %>% data.frame
+SaA_anomaly_YS<-read.csv("SaA_anomaly_by_system.csv")[,-1] %>% dplyr::select(year,all_of(rivers)) %>% data.frame
 ##===================================================## summarize BB-wide
 ## aggregate individual observations for all of BB
 ##==================================================## mean saltwater age
@@ -38,15 +38,15 @@ meanage_Y<-data %>% group_by(year) %>% summarize(meanage=mean(rep(as.numeric(Tot
 ## aggregate by year and stock/system
 ##=====================================================## mean ocean age
 dat<-dplyr::select(data,year,Salt.Water.Age,Count,length,stock)
-meansaltage_YS_wide<-dat %>% group_by(stock,year) %>% summarize(meanage=mean(rep(Salt.Water.Age,Count))) %>% pivot_wider(names_from=stock,values_from=meanage) %>% select(year,all_of(rivers)) %>% data.frame
+meansaltage_YS_wide<-dat %>% group_by(stock,year) %>% summarize(meanage=mean(rep(Salt.Water.Age,Count))) %>% pivot_wider(names_from=stock,values_from=meanage) %>% dplyr::select(year,all_of(rivers)) %>% data.frame
 meansaltage_YS_wide<-meansaltage_YS_wide[order(meansaltage_YS_wide$year),]
 ##=================================================## mean freshwater age
 dat<-dplyr::select(data,year,Fresh.Water.Age,Count,length,stock)
-meanfreshage_YS_wide<-dat %>% group_by(stock,year) %>% summarize(meanage=mean(rep(Fresh.Water.Age,Count))) %>% pivot_wider(names_from=stock,values_from=meanage) %>% select(year,all_of(rivers)) %>% data.frame
+meanfreshage_YS_wide<-dat %>% group_by(stock,year) %>% summarize(meanage=mean(rep(Fresh.Water.Age,Count))) %>% pivot_wider(names_from=stock,values_from=meanage) %>% dplyr::select(year,all_of(rivers)) %>% data.frame
 meanfreshage_YS_wide<-meanfreshage_YS_wide[order(meanfreshage_YS_wide$year),]
 ##=================================================## mean total age
 dat<-dplyr::select(data,year,Total.Age,Count,length,stock)
-meanage_YS_wide<-dat %>% group_by(stock,year) %>% summarize(meanage=mean(rep(Total.Age,Count))) %>% pivot_wider(names_from=stock,values_from=meanage) %>% select(year,all_of(rivers)) %>% data.frame
+meanage_YS_wide<-dat %>% group_by(stock,year) %>% summarize(meanage=mean(rep(Total.Age,Count))) %>% pivot_wider(names_from=stock,values_from=meanage) %>% dplyr::select(year,all_of(rivers)) %>% data.frame
 meanage_YS_wide<-meanage_YS_wide[order(meanage_YS_wide$year),]
 
 ##=====================================================================##

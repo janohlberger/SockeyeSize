@@ -52,7 +52,7 @@ data<-data[data$System!= "Alagnak",] ## too few escapement ASL samples
 
 ##=======================================================## selected data
 data$stock<-data$System
-# write.csv(data,"output/data_used.csv")
+write.csv(data,"output/data_used.csv")
 data<-dplyr::select(data,year,age,length,Count,stock)
 data<-data[order(data$stock,data$year,data$age,data$length),]
 nobs<-data %>% summarize(nobs=length(rep(length,Count))) ## observations
@@ -66,7 +66,7 @@ mean_SaA<-data %>% group_by(age) %>% summarize(meansize=mean(rep(length,Count),n
 ##---------------------------------------------------## overall mean size
 meansize_Y<-data %>% group_by(year) %>% summarize(meansize=mean(rep(length,Count))) 
 meansize_Y<-meansize_Y[order(meansize_Y$year),]
-# write.csv(meansize_Y,file="output/Mean_size_BB_wide.csv")
+write.csv(meansize_Y,file="output/Mean_size_BB_wide.csv")
 ##--------------------------------------------## mean size-at-age by year
 meanSaA_YA<-data %>% group_by(age,year) %>% summarize(meansize=mean(rep(length,Count),na.rm=T)) 
 # write.csv(round(meanSaA_YA,2),file="output/mean_SaA_by_year_BB_wide.csv")
@@ -81,7 +81,7 @@ data$SaAanomalyBB<-apply(data,1,function(x) SaA_anomaly_BB(x[names(x)=="length"]
 SaA_anomaly_Y_all<-data %>% group_by(year) %>% summarize(SaA_anomaly=mean(rep(SaAanomalyBB,Count))) 
 SaA_anomaly_Y_all<-SaA_anomaly_Y_all[order(SaA_anomaly_Y_all$year),]
 SaA_anomaly_Y<-SaA_anomaly_Y_all[order(SaA_anomaly_Y_all$year),]
-# write.csv(SaA_anomaly_Y,file="output/SaA_anomaly_BB_wide.csv")
+write.csv(SaA_anomaly_Y,file="output/SaA_anomaly_BB_wide.csv")
 
 ##======================## size change (mm) due to changes in size-at-age
 change_SaA<-NA
@@ -122,7 +122,7 @@ meansize_YS<-data %>% group_by(stock,year) %>% summarize(meansize=mean(rep(lengt
 meansize_YS_wide<-meansize_YS %>% pivot_wider(names_from=stock,values_from=meansize) 
 meansize_YS_wide<-meansize_YS_wide[order(meansize_YS_wide$year),]
 meansize_YS_wide[meansize_YS_wide==0]<-NA
-# write.csv(meansize_YS_wide,file="output/Mean_size_by_system.csv")
+write.csv(meansize_YS_wide,file="output/Mean_size_by_system.csv")
 
 ##====================================================## mean size-at-age
 meanSaA_SYA<-data %>% group_by(stock,year,age) %>% summarize(meansize=mean(rep(length,Count),na.rm=T))
@@ -132,7 +132,7 @@ meanSaA_SA<-data %>% group_by(stock,age) %>% summarize(meansize=mean(rep(length,
 SaA_anomaly_YS<-data %>% group_by(stock,year) %>% summarize(SaA_anomaly=mean(rep(SaAanomaly,Count)))
 SaA_anomaly_YS_wide<-SaA_anomaly_YS %>% pivot_wider(names_from=stock,values_from=SaA_anomaly)
 SaA_anomaly_YS_wide<-SaA_anomaly_YS_wide[order(SaA_anomaly_YS_wide$year),]
-# write.csv(SaA_anomaly_YS_wide,file="output/SaA_anomaly_by_system.csv")
+write.csv(SaA_anomaly_YS_wide,file="output/SaA_anomaly_by_system.csv")
 stocks<-names(SaA_anomaly_YS_wide)[-1]
 
 ##======================## size change (mm) due to changes in size-at-age

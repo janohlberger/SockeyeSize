@@ -8,8 +8,6 @@ if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(se
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
 setwd(homeDir)
-
-##============================================================## settings
 nYref<-5 ## number of years to compare in early and late periods
 highres<-TRUE ## if TRUE use high temporal resolution
 
