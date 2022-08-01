@@ -3,7 +3,7 @@
 ##  Contribution of size-at-age changes to mean size changes over time ##
 ##                                                                     ##
 ##=====================================================================##
-pkgs<-c("here","tidyr","dplyr")
+pkgs<-c("here","dplyr","tidyr")
 if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
@@ -11,7 +11,7 @@ setwd(homeDir)
 
 ##============================================================## settings
 nYref<-5 ## number of years to compare in early and late periods
-highres<-TRUE ## if TRUE use high temporal resolution (takes a few hours)
+highres<-TRUE ## if TRUE use high temporal resolution
 
 ##==================================================## age-length dataset
 data<-read.csv("output/data_used.csv")[,-1]
@@ -60,7 +60,6 @@ nYall<-dim(SaA_anomaly_Y)[1]
 early<-mean(SaA_anomaly_Y$SaA_anomaly[1:nYref])
 late<-mean(SaA_anomaly_Y$SaA_anomaly[(nYall-nYref+1):nYall])
 change_SaA<-round(late-early,2)
-
 
 ##============================================## overall size change (mm)
 change_size_BB<-NA

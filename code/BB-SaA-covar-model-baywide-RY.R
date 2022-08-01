@@ -3,7 +3,7 @@
 ##  Model of changes in size-at-age of Bristol Bay sockeye by run year  ##
 ##                                                                      ##
 ##======================================================================##
-pkgs<-c("here","tidyr","dplyr","readxl","pracma","MuMIn","Hmisc","stringr", "relaimpo","visreg","RColorBrewer","ggplot2","viridis")
+pkgs<-c("here","tidyr","dplyr","readxl","pracma","MuMIn","Hmisc","stringr", "relaimpo","visreg","RColorBrewer","ggplot2","viridis","nlme")
 if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
@@ -142,8 +142,8 @@ LakeTemp$LakeTemp_lag3_movav<-movavg(LakeTemp$LakeTemp_lag3,n=2,type="s")
 
 ##=====================================================## salmon abundance
 SalmonData<-merge(pink_salmon,chum_salmon,by="year",all=T)
-nr<-dim(SalmonData)[1];nc<-dim(SalmonData)[2]
 SalmonData$comp_tot_num<-SalmonData$pink_tot_num+SalmonData$chum_tot_num
+nr<-dim(SalmonData)[1];nc<-dim(SalmonData)[2]
 ##----------------------------------------------------------------## lag-1
 Salmon_data_lag1<-data.frame(rbind(rep(NA,nc-1),SalmonData[-nr,-1]))
 names(Salmon_data_lag1)<-paste0(names(SalmonData)[-1],"_lag1")
@@ -175,7 +175,6 @@ alldata<-data<-Reduce(function(...) merge(...,by="year"),datalist)
 ## run model with lake temp and re-run using all years if not included
 
 ##================================================## pairwise correlations 
-
 ##-------------------------## correlations between covariates and response
 test<-apply(data,2,function(x) as.numeric(as.character(x)))
 res<-Hmisc::rcorr(test,type="pearson")
@@ -198,6 +197,7 @@ test<-test[ ]
 res<-Hmisc::rcorr(test)
 out<-res$r ## all pairwise correlations
 diag(out)<-NA
+round(out,3)
 
 ##==============================================## select final covariates
 data<-dplyr::select(data,year,SaA_anomaly,total_return,AIwinT,BSsumT_lag1, pink_tot_num_lag1) 
@@ -234,110 +234,48 @@ mod_sel<-get.models(mod_select,subset=1)[[1]]
 summary(mod_sel)
 
 ##======================================================## quick AIC table
-n_top_mods<-10
+n_top_mods<-17
 aic_table<-data.frame(mod_select)
 aic_table[1:n_top_mods,]
 
-##======================================================================##
-##===============================================## model cross validation
-##======================================================================##
-## out-of-sample predictions on randomly drawn training and test data
-##=========================================================## model forms
-run_cross_validation<-FALSE
-if(run_cross_validation) {
-  mod_list<-get.models(mod_select,subset=delta<2) 
-  nM<-length(mod_list)
-  test_forms<-all_terms<-list()
-  for(i in 1:nM) {
-    mymod<-mod_list[[i]]
-    terms<-attributes(mymod$terms)$term.labels
-    all_terms[[i]]<-terms
-    nterms<-length(terms)
-    if(nterms==0) { my_mod<-formula("SaA_anomaly~1") } else { my_mod<-formula(paste("SaA_anomaly~",paste0(terms,collapse="+"))) }
-    test_forms[[i]]<-my_mod
-  }
-  ## exclude models that include quadratic without linear effect of predictor
-  test_forms<-test_forms[-c(7,9,15)] 
-  
-  ##=====================================================## cross-validation 
-  nS<-1000 ## number of runs 
-  nMod<-length(test_forms)
-  seeds<-sample(seq(1e6),nS,replace=FALSE)
-  RMSE<-array(dim=c(nS,nMod))
-  formulas<-list()
-  cnt<-1
-  '%!in%'<-function(x,y)!('%in%'(x,y))
-  start.time<-Sys.time()
-  for(i in 1:nS) {
-    set.seed(seeds[cnt])
-    train<-sort(sample(seq(nY),round(0.75*nY),replace=F)) ## use x% to train
-    traindata<-data[train,] 
-    test<-seq(nY)[seq(nY) %!in% train]
-    testdata<-data[test,]
-    ##------------------------------------------------## loop model structures
-    for(j in 1:nMod) { 
-      test_mod<-form<-test_forms[[j]]
-      term_list<-strsplit(as.character(test_mod)," ")[[3]]
-      term_list<-term_list[term_list!="+"]
-      trainmod<-gls(test_mod,data=traindata,method="ML")
-      predicted<-predict(trainmod,newdata=testdata,se.fit=T,type="response")
-      ##--------------------------------------------## root mean squared error
-      pred<-as.numeric(predicted$fit)
-      true<-as.numeric(testdata$SaA_anomaly)
-      RMSE[i,j]<-sqrt(sum((pred-true)^2)/nY)
-      ##------------------------------------------------------## save formulas
-      prev_mod<-trainmod
-      save_terms<-attributes(prev_mod)$namBetaFull[-1]
-      allterms<-paste(save_terms,collapse="+") 
-      nt<-length(allterms)
-      new_mod<-formula(paste("~",allterms,sep="")) 
-      formulas[[j]]<-new_mod
-    } ## end loop over models (j)
-    cnt<-cnt+1
-  } ## end stochastic loop (i)
-  ##----------------------------------------------------------## elapsed time
-  end.time<-Sys.time()
-  elapsed<-end.time-start.time
-  print(round(elapsed,2)) ## ~30 min for 10,000 draws
-  ##-----------------------------------------------------## model forms short
-  mod_forms<-unlist(test_forms)
-  mod_forms<-gsub("SaA_anomaly","",mod_forms)
-  mod_forms<-gsub("total_return","R",mod_forms)
-  mod_forms<-gsub("pink_tot_num_lag1","P",mod_forms)
-  mod_forms<-gsub("AIwinT:regime","W:r",mod_forms)
-  mod_forms<-gsub("BSsumT_lag1:regime","S:r",mod_forms)
-  mod_forms<-gsub("AIwinT","W",mod_forms)
-  mod_forms<-gsub("BSsumT_lag1","S",mod_forms)
-  mod_forms<-gsub("1","",mod_forms)
-  mod_forms<-gsub(" ","",mod_forms)
-  mod_forms<-unlist(mod_forms)
-  ##----------------------------------------------------------## median RMSEs
-  med_RMSE<-apply(RMSE,2,function(x) median(x,na.rm=T))
-  med_RMSE<-round(med_RMSE,4)
-  names(med_RMSE)<-mod_forms
-  data.frame(med_RMSE)
-  
-  med_RMSE<-med_RMSE[order(med_RMSE)]
-  med_RMSE
-  ##------------------------------------------------------------## sort RMSEs
-  RMSE_pl<-data.frame(RMSE)
-  names(RMSE_pl)<-mod_forms
-  RMSE_pl<-RMSE_pl[,order(match(names(RMSE_pl),names(med_RMSE)))]
-  names_pl<-names(RMSE_pl)
-  
-  ##=============================================================## plot RMSE
-  pdf("Model_cross_validation.pdf",height=4,width=5)
-  par(mar=c(3,13,1,1),mgp=c(1.75,0.5,0),tcl=-0.3,las=1)
-  cols<-c("gray60",rep("gray90",nMod-1))
-  boxplot(RMSE_pl,axes=F,horizontal=T,range=1,outline=F,col=cols,lty=1,lwd=0.5, xlim=c(0.5,nMod+0.5),pars=list(boxwex=0.5),pch=16,cex=0.25, ylab="",xlab="RMSE");box()
-  abline(v=median(RMSE_pl[,1]),lty=1,lwd=0.1)
-  axis(1,at=seq(1,6,0.5),labels=T,line=0,cex.axis=0.8)
-  axis(2,at=seq(1,nMod,1),labels=names_pl,line=0,cex.axis=0.8)
-  dev.off()
+##============================================================## AIC table
+#models_subset<-get.models(mod_select,subset=1:n_top_mods)
+models_subset<-get.models(mod_select,subset=delta<2) 
+aic_table<-data.frame(mod_select)
+aic_table<-aic_table[1:length(models_subset),]
+aic_table$cum.weights<-cumsum(aic_table$weight)
+num_of_mods<-length(models_subset)
+mod_forms<-NA
+for(i in 1:num_of_mods) {
+  use_mod<-models_subset[[i]]
+  form<-as.character(use_mod$call)[2]
+  mod_forms[i]<-form
 }
+mod_forms<-unlist(mod_forms)
+mod_forms<-gsub("SaA_anomaly","",mod_forms)
+mod_forms<-gsub("total_return","R",mod_forms)
+mod_forms<-gsub("pink_tot_num_lag1","P",mod_forms)
+mod_forms<-gsub("AIwinT:regime","W:r",mod_forms)
+mod_forms<-gsub("BSsumT_lag1:regime","S:r",mod_forms)
+mod_forms<-gsub("AIwinT","W",mod_forms)
+mod_forms<-gsub("BSsumT_lag1","S",mod_forms)
+mod_forms<-gsub("1","",mod_forms)
+mod_forms<-gsub(" ","",mod_forms)
+mod_forms<-lapply(mod_forms,function(x) substr(x,1,nchar(x)-1))
+mod_forms<-unlist(mod_forms)
+aic_table$mod_forms<-mod_forms ## add to table
+aic_table$rank<-seq(dim(aic_table)[1])
+aic_table$AIC<-round(aic_table$AIC,2)
+aic_table$delta<-round(aic_table$delta,2)
+aic_table_to_save<-dplyr::select(aic_table,rank,mod_forms,AIC,delta)
+## exclude models that include quadratic without linear effect of predictor
+aic_table_to_save<-aic_table_to_save[-c(8,9,15),] 
+aic_table_to_save$rank<-seq(1:dim(aic_table_to_save)[1])
+# write.csv(aic_table_to_save,"table_AICs.csv")
+
 
 ##======================================================================##
-##=================================================## final selected model
+##=======================================================## selected model
 ##======================================================================##
 mod<-mod_sel
 ##--------------------------------------------------------## model results
@@ -565,6 +503,83 @@ pdat %>% ggplot(aes(x=total_return,y=pink_tot_num_lag1,size=SaA_anomaly,col=year
         legend.text=element_text(size=8)
         )
 dev.off()
+
+##======================================================================##
+##===============================================## model cross validation
+##======================================================================##
+## out-of-sample predictions on randomly drawn training and test data
+##=========================================================## model forms
+mod_list<-get.models(mod_select,subset=delta<2) 
+nM<-length(mod_list)
+test_forms<-all_terms<-list()
+for(i in 1:nM) {
+  mymod<-mod_list[[i]]
+  terms<-attributes(mymod$terms)$term.labels
+  all_terms[[i]]<-terms
+  nterms<-length(terms)
+  if(nterms==0) { my_mod<-formula("SaA_anomaly~1") } else { my_mod<-formula(paste("SaA_anomaly~",paste0(terms,collapse="+"))) }
+  test_forms[[i]]<-my_mod
+}
+## exclude models that include quadratic without linear effect of predictor
+test_forms<-test_forms[-c(8,9,15)] 
+
+##=====================================================## cross-validation
+nS<-10000 ## number of draws/seeds 
+nMod<-length(test_forms)
+seeds<-sample(seq(1e6),nS,replace=FALSE)
+RMSE<-array(dim=c(nS,nMod))
+formulas<-list()
+cnt<-1
+'%!in%'<-function(x,y)!('%in%'(x,y))
+start.time<-Sys.time()
+for(i in 1:nS) {
+  set.seed(seeds[cnt])
+  train<-sort(sample(seq(nY),round(0.75*nY),replace=F)) ## use x% to train
+  traindata<-data[train,] 
+  test<-seq(nY)[seq(nY) %!in% train]
+  testdata<-data[test,]
+  ##------------------------------------------------## loop model structures
+  for(j in 1:nMod) { 
+    test_mod<-form<-test_forms[[j]]
+    term_list<-strsplit(as.character(test_mod)," ")[[3]]
+    term_list<-term_list[term_list!="+"]
+    trainmod<-gls(test_mod,data=traindata,method="ML")
+    predicted<-predict(trainmod,newdata=testdata,se.fit=T,type="response")
+    ##--------------------------------------------## root mean squared error
+    pred<-as.numeric(predicted$fit)
+    true<-as.numeric(testdata$SaA_anomaly)
+    RMSE[i,j]<-sqrt(sum((pred-true)^2)/nY)
+    ##------------------------------------------------------## save formulas
+    prev_mod<-trainmod
+    save_terms<-attributes(prev_mod)$namBetaFull[-1]
+    allterms<-paste(save_terms,collapse="+") 
+    nt<-length(allterms)
+    new_mod<-formula(paste("~",allterms,sep="")) 
+    formulas[[j]]<-new_mod
+  } ## end loop over models (j)
+  cnt<-cnt+1
+} ## end stochastic loop (i)
+##----------------------------------------------------------## elapsed time
+end.time<-Sys.time()
+elapsed<-end.time-start.time
+print(round(elapsed,2))
+##-----------------------------------------------------## model forms short
+mod_forms<-unlist(test_forms)
+mod_forms<-gsub("SaA_anomaly","",mod_forms)
+mod_forms<-gsub("total_return","R",mod_forms)
+mod_forms<-gsub("pink_tot_num_lag1","P",mod_forms)
+mod_forms<-gsub("AIwinT:regime","W:r",mod_forms)
+mod_forms<-gsub("BSsumT_lag1:regime","S:r",mod_forms)
+mod_forms<-gsub("AIwinT","W",mod_forms)
+mod_forms<-gsub("BSsumT_lag1","S",mod_forms)
+mod_forms<-gsub("1","",mod_forms)
+mod_forms<-gsub(" ","",mod_forms)
+mod_forms<-unlist(mod_forms)
+##----------------------------------------------------------## median RMSEs
+med_RMSE<-apply(RMSE,2,function(x) median(x,na.rm=T))
+med_RMSE<-round(med_RMSE,4)
+names(med_RMSE)<-mod_forms
+data.frame(round(med_RMSE,2))
 
 ##======================================================================##
 ##======================================================================##
