@@ -3,7 +3,7 @@
 ##  Model of changes in size-at-age of Bristol Bay sockeye by run year  ##
 ##                                                                      ##
 ##======================================================================##
-pkgs<-c("here","tidyr","dplyr","readxl","pracma","MuMIn","Hmisc","stringr", "relaimpo","visreg","RColorBrewer","ggplot2","viridis","nlme")
+pkgs<-c("here","tidyr","dplyr","readxl","pracma","MuMIn","stringr", "relaimpo","visreg","RColorBrewer","ggplot2","viridis","nlme") 
 if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
@@ -16,9 +16,54 @@ setwd(homeDir)
 ##======================================================================##
 
 ##======================================================================##
-##===================================## average annual size-at-age anomaly
+##=============## calculate average annual size-at-age anomaly by run year
 ##======================================================================##
-SaA_anomaly_Y<-read.csv("output/SaA_anomaly_BB_wide.csv")[,-1]
+
+##============================================================## settings
+nYref<-5 ## number of years to compare in early and late periods
+min.per.age<-0.1 ## minimum percent of samples per age and system 
+##================================================================## data
+esc.data<-read.csv("data/ResampledEscapement_fromBroodTable.csv")
+harv.data<-read.csv("data/ResampledCatch_fromBroodTable.csv") 
+all.data<-data.frame(rbind(esc.data,harv.data))
+##===============================================## select data for model
+data<-all.data
+data<-dplyr::filter(data,!is.na(Length),Length!=0)
+data$length<-as.numeric(data$Length)
+data$age<-as.character(data$Age)
+##============================## drop very rare age groups in each system
+ages<-as.character(unique(data$age))
+data$AgeSystem<-as.factor(paste(data$age,data$System,sep="_"))
+nobs_AS<-data %>% group_by(AgeSystem,age,System) %>% summarize(nobs=length(rep(length,Count))) %>% data.frame
+nobs_S<-data %>% group_by(System) %>% summarize(total=length(rep(length,Count))) %>% data.frame
+nobs_AS<-merge(nobs_AS,nobs_S,by="System",all=T)
+nobs_AS$percent<-round(nobs_AS$nobs*100/nobs_AS$total,4)
+keep_AS_cat<-nobs_AS[nobs_AS$percent>=min.per.age,]
+data<-data[data$AgeSystem %in% keep_AS_cat$AgeSystem,]
+data$age<-as.character(data$age)
+ages<-as.character(unique(data$age))
+##============================## select brood or run years across systems
+data$year<-data$ReturnYear
+years<-sort(unique(data$year))
+data$Total.Age<-data$Salt.Water.Age+data$Fresh.Water.Age+1 
+data<-data[data$System!= "Alagnak",] ## too few escapement ASL samples
+##=======================================================## selected data
+data$stock<-data$System
+data<-dplyr::select(data,year,age,length,Count,stock)
+data<-data[order(data$stock,data$year,data$age,data$length),]
+nobs<-data %>% summarize(nobs=length(rep(length,Count))) ## observations
+##---------------------------------------## mean size at age across years
+mean_SaA<-data %>% group_by(age) %>% summarize(meansize=mean(rep(length,Count),na.rm=T)) %>% data.frame()
+##===============================================## size-at-age anomalies
+## size-at-age anomalies from age groups mean size across years
+##-----------------------------------------------------## anomaly function
+SaA_anomaly_BB<-function(length,age) { as.numeric(length)- mean_SaA$meansize[mean_SaA$age==age] }
+##-----------------------------## size-at-age anomalies of all individuals
+data$SaAanomalyBB<-apply(data,1,function(x) SaA_anomaly_BB(x[names(x)=="length"],x[names(x)=="age"]))
+##----------------------------------## average annual size-at-age anomaly
+SaA_anomaly_Y_all<-data %>% group_by(year) %>% summarize(SaA_anomaly=mean(rep(SaAanomalyBB,Count))) 
+SaA_anomaly_Y_all<-SaA_anomaly_Y_all[order(SaA_anomaly_Y_all$year),]
+SaA_anomaly_Y<-SaA_anomaly_Y_all[order(SaA_anomaly_Y_all$year),]
 
 ##======================================================================##
 ##===================================================## BB sockeye returns
@@ -524,7 +569,7 @@ for(i in 1:nM) {
 test_forms<-test_forms[-c(8,9,15)] 
 
 ##=====================================================## cross-validation
-nS<-10000 ## number of draws/seeds 
+nS<-1000 ## number of draws/seeds 
 nMod<-length(test_forms)
 seeds<-sample(seq(1e6),nS,replace=FALSE)
 RMSE<-array(dim=c(nS,nMod))

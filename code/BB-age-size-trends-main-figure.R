@@ -3,7 +3,7 @@
 ##   Figure of changes in mean size, age composition, and size-at-age  ##
 ##                                                                     ##
 ##=====================================================================##
-pkgs<-c("tidyverse","dplyr","rlist","pracma","mgcv")
+pkgs<-c("tidyverse","dplyr","rlist","pracma","mgcv","visreg")
 if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
