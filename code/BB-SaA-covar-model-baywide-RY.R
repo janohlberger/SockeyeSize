@@ -3,67 +3,34 @@
 ##  Model of changes in size-at-age of Bristol Bay sockeye by run year  ##
 ##                                                                      ##
 ##======================================================================##
-pkgs<-c("here","tidyr","dplyr","readxl","pracma","MuMIn","stringr", "relaimpo","visreg","RColorBrewer","ggplot2","viridis","nlme") 
+pkgs<-c("here","tidyr","dplyr","tidymodels","conflicted","readxl","pracma","MuMIn","stringr","nlme", "relaimpo","visreg","RColorBrewer","ggplot2","viridis","Hmisc","report","broom") 
 if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
 setwd(homeDir)
+tidymodels_prefer(quiet=TRUE)
+conflict_prefer("summarize", "dplyr")
 
-##======================================================================##
 ##======================================================================##
 ##============================================================## load data
 ##======================================================================##
-##======================================================================##
-
-##======================================================================##
-##=============## calculate average annual size-at-age anomaly by run year
-##======================================================================##
-
-##============================================================## settings
-nYref<-5 ## number of years to compare in early and late periods
-min.per.age<-0.1 ## minimum percent of samples per age and system 
-##================================================================## data
-esc.data<-read.csv("data/ResampledEscapement_fromBroodTable.csv")
-harv.data<-read.csv("data/ResampledCatch_fromBroodTable.csv") 
-all.data<-data.frame(rbind(esc.data,harv.data))
-##===============================================## select data for model
-data<-all.data
-data<-dplyr::filter(data,!is.na(Length),Length!=0)
-data$length<-as.numeric(data$Length)
-data$age<-as.character(data$Age)
-##============================## drop very rare age groups in each system
-ages<-as.character(unique(data$age))
-data$AgeSystem<-as.factor(paste(data$age,data$System,sep="_"))
-nobs_AS<-data %>% group_by(AgeSystem,age,System) %>% summarize(nobs=length(rep(length,Count))) %>% data.frame
-nobs_S<-data %>% group_by(System) %>% summarize(total=length(rep(length,Count))) %>% data.frame
-nobs_AS<-merge(nobs_AS,nobs_S,by="System",all=T)
-nobs_AS$percent<-round(nobs_AS$nobs*100/nobs_AS$total,4)
-keep_AS_cat<-nobs_AS[nobs_AS$percent>=min.per.age,]
-data<-data[data$AgeSystem %in% keep_AS_cat$AgeSystem,]
-data$age<-as.character(data$age)
-ages<-as.character(unique(data$age))
-##============================## select brood or run years across systems
-data$year<-data$ReturnYear
-years<-sort(unique(data$year))
-data$Total.Age<-data$Salt.Water.Age+data$Fresh.Water.Age+1 
-data<-data[data$System!= "Alagnak",] ## too few escapement ASL samples
-##=======================================================## selected data
-data$stock<-data$System
-data<-dplyr::select(data,year,age,length,Count,stock)
-data<-data[order(data$stock,data$year,data$age,data$length),]
-nobs<-data %>% summarize(nobs=length(rep(length,Count))) ## observations
+data<-read.csv("output/data_used_by_run_year_all.csv")[,-1] 
 ##---------------------------------------## mean size at age across years
-mean_SaA<-data %>% group_by(age) %>% summarize(meansize=mean(rep(length,Count),na.rm=T)) %>% data.frame()
-##===============================================## size-at-age anomalies
-## size-at-age anomalies from age groups mean size across years
+mean_SaA<-data %>% 
+  group_by(age) %>% 
+  summarize(meansize=mean(rep(length,Count),na.rm=T)) %>% 
+  data.frame()
 ##-----------------------------------------------------## anomaly function
 SaA_anomaly_BB<-function(length,age) { as.numeric(length)- mean_SaA$meansize[mean_SaA$age==age] }
 ##-----------------------------## size-at-age anomalies of all individuals
 data$SaAanomalyBB<-apply(data,1,function(x) SaA_anomaly_BB(x[names(x)=="length"],x[names(x)=="age"]))
 ##----------------------------------## average annual size-at-age anomaly
-SaA_anomaly_Y_all<-data %>% group_by(year) %>% summarize(SaA_anomaly=mean(rep(SaAanomalyBB,Count))) 
-SaA_anomaly_Y_all<-SaA_anomaly_Y_all[order(SaA_anomaly_Y_all$year),]
-SaA_anomaly_Y<-SaA_anomaly_Y_all[order(SaA_anomaly_Y_all$year),]
+SaA_anomaly_Y<-data %>% 
+  group_by(year) %>% 
+  summarize(SaA_anomaly=mean(rep(SaAanomalyBB,Count))) %>%
+  arrange(year)
+##----------------------------------------------## selection differentials
+sdiff<-read.csv("output/Selection_differentials_Y.csv")[,-1]
 
 ##======================================================================##
 ##===================================================## BB sockeye returns
@@ -129,7 +96,7 @@ LakeTemp<-dplyr::select(LakeTemp,year=Year,LakeTemp=MeanLakeTemp)
 ##======================================================================##
 ##==============================================## save raw covariate data
 ##======================================================================##
-cov_list<-list(BBreturns,SST_BB,SST_GoA,SST_AI,SST_BS,LakeTemp,pink_salmon,chum_salmon)
+cov_list<-list(BBreturns,SST_BB,SST_GoA,SST_AI,SST_BS,LakeTemp,pink_salmon,chum_salmon,sdiff)
 covariates<-Reduce(function(...) merge(...,by="year",all=T),cov_list)
 covariates<-covariates[covariates$year>=1960,]
 write.csv(round(covariates,4),file="data/covariate_data.csv")
@@ -181,6 +148,7 @@ SST_data$BSsumT_lag2_movav2<-movavg(SST_data$BSsumT_lag2,n=2,type="s")
 nr<-dim(LakeTemp)[1];nc<-dim(LakeTemp)[2]
 ##----------------------------------------------------------------## lag-3
 LakeTemp$LakeTemp_lag3<-c(rep(NA,3),LakeTemp$LakeTemp[-c(nr-2,nr-1,nr)])
+LakeTemp$LakeTemp_lag4<-c(rep(NA,4),LakeTemp$LakeTemp[-c(nr-3,nr-2,nr-1,nr)])
 ##-----------------------------------------## 2-year moving average on lag
 LakeTemp$LakeTemp_lag3_movav<-movavg(LakeTemp$LakeTemp_lag3,n=2,type="s")
 ## mean summer lake temps when most fish reared in lakes
@@ -206,18 +174,26 @@ SalmonData_lag1_movav<-data.frame(apply(Salmon_data_lag1,2,function(x) movavg(x,
 names(SalmonData_lag1_movav)<-paste0(names(SalmonData)[-1],"_lag1_movav2")
 Salmon_data<-data.frame(cbind(Salmon_data,SalmonData_lag1_movav))
 
+##==============================================## selection differentials
+nr<-dim(sdiff)[1];nc<-dim(sdiff)[2]
+##-------------------------------## lags-4 and 5 and 2-year movav on lag-4
+sdiff$sel_diff_lag4<-c(rep(NA,4),sdiff$sel_diff[-c(nr-3,nr-2,nr-1,nr)])
+sdiff$sel_diff_lag5<-c(rep(NA,5),sdiff$sel_diff[-c(nr-4,nr-3,nr-2,nr-1,nr)])
+sdiff$sel_diff_lag4_movav<-movavg(sdiff$sel_diff_lag4,n=2,type="s")
+
 ##======================================================================##
 ##======================================================================##
 ##================================## bay-wide model of size-at-age anomaly
 ##======================================================================##
 ##======================================================================##
-setwd(file.path(paste0(homeDir,"/output")))
 
 ##===========================================================## model data
-datalist<-list(SaA_anomaly_Y,BBreturns,SST_data,Salmon_data) #,LakeTemp)
+datalist<-list(SaA_anomaly_Y,BBreturns,SST_data,Salmon_data) 
+#datalist<-list(SaA_anomaly_Y,BBreturns,SST_data,Salmon_data,LakeTemp,sdiff)
 alldata<-data<-Reduce(function(...) merge(...,by="year"),datalist)
 ## lake temperature data start with 1967 return year due to 3-4 year lag
-## run model with lake temp and re-run using all years if not included
+## selection differentials start 1968 return year due to lags and movav
+## run model with lake temp and sel diffs and then re-run using all years 
 
 ##================================================## pairwise correlations 
 ##-------------------------## correlations between covariates and response
@@ -245,7 +221,8 @@ diag(out)<-NA
 round(out,3)
 
 ##==============================================## select final covariates
-data<-dplyr::select(data,year,SaA_anomaly,total_return,AIwinT,BSsumT_lag1, pink_tot_num_lag1) 
+## LakeTemp_lag3,LakeTemp_lag4,sel_diff_lag4,sel_diff_lag5
+data<-dplyr::select(data,year,SaA_anomaly,total_return,AIwinT,BSsumT_lag1, pink_tot_num_lag1)
 
 ##======================================================## scaling of data
 scaleD<-T ## center and scale data to mean=0 and sd=1
@@ -260,7 +237,7 @@ nY<-dim(data)[1]
 ##======================================================================##
 ##=====================================## size-at-age anomaly linear model
 ##======================================================================##
-
+## LakeTemp_lag3,LakeTemp_lag4,sel_diff_lag4,sel_diff_lag5
 ##=========================================================## main effects
 mod_form<-formula(SaA_anomaly~total_return+I(total_return^2)+AIwinT+I(AIwinT^2)+BSsumT_lag1+I(BSsumT_lag1^2)+pink_tot_num_lag1+I(pink_tot_num_lag1^2))
 
@@ -316,8 +293,7 @@ aic_table_to_save<-dplyr::select(aic_table,rank,mod_forms,AIC,delta)
 ## exclude models that include quadratic without linear effect of predictor
 aic_table_to_save<-aic_table_to_save[-c(8,9,15),] 
 aic_table_to_save$rank<-seq(1:dim(aic_table_to_save)[1])
-# write.csv(aic_table_to_save,"table_AICs.csv")
-
+# write.csv(aic_table_to_save,"output/table_AICs.csv")
 
 ##======================================================================##
 ##=======================================================## selected model
@@ -339,6 +315,11 @@ test_data<-data_unscaled[,colnames(data_unscaled) %in% mod_terms]
 test<-apply(test_data,2,function(x) as.numeric(as.character(x)))
 out<-round(rcorr(test,type="pearson")$r,3)
 max(out[out!=1],na.rm=T) 
+
+##=======================================================## model parameters
+report_performance(mod)
+stats_table<-report_statistics(mod)
+tidy_table<-data.frame(tidy(mod))
 
 ##===================================================## variable importance
 relimp<-calc.relimp(mod,type="lmg") ## % of response
@@ -367,14 +348,14 @@ mod_terms_ordered<-mod_terms[order(mod_terms,decreasing=T)]
 cols<-c("#855A27","#C7AC80","#8D9121","#629D9B","#178BC9", "#536373","#AE2633") 
 ##-----------------------------------------------------------## start plot
 if(add_time_series){ 
-pdf("Model-size-at-age-partial-effects.pdf",width=12,height=6)
+pdf("plots/Model-size-at-age-partial-effects.pdf",width=12,height=6)
 layout(matrix(c(1:8),nrow=2,byrow=F)) 
 } else {
-pdf("Model-size-at-age-partial-effects.pdf",width=12,height=3)
+pdf("plots/Model-size-at-age-partial-effects.pdf",width=12,height=3)
 layout(matrix(c(1:4),nrow=1,byrow=T)) 
 }
 if(add_eff_anom){
-pdf("Model-size-at-age-partial-effects.pdf",width=12,height=9)
+pdf("plots/Model-size-at-age-partial-effects.pdf",width=12,height=9)
 layout(matrix(c(1:12),nrow=3,byrow=F))
 }
 par(mar=c(4,4,.5,.5),oma=c(0,0,1,.5),mgp=c(2.2,.5,0),tcl=-0.3,cex.lab=1.2)
@@ -418,7 +399,7 @@ abline(h=0,lty=1,lwd=0.5)
 ##------------------------------------------------------## add time series
 if(add_time_series){ 
 yy<-covariates$total_return ## convert to in millions
-plot(xx,yy,type="h",lwd=1.5,col="saddlebrown",xlab="Year",ylab="Total run size (millions)",ylim=newlim,xlim=xlim) ## or use: darkorchid4
+plot(xx,yy,type="l",lwd=1.5,col="saddlebrown",xlab="Year",ylab="Total run size (millions)",ylim=newlim,xlim=xlim) ## or use: darkorchid4
 legend("topleft","e",text.font=2,cex=cexll,bty="n",inset=ll,xpd=NA)
 }
 ##===========================================## pinks salmon previous year
@@ -500,7 +481,7 @@ newdata<-list(total_return=data$total_return,AIwinT=data$AIwinT,BSsumT_lag1=data
 predicted<-predict(mod,newdata=newdata,se.fit=T,interval="confidence",level=0.95,type="response")
 pred<-data.frame(predicted$fit)
 ##=================================================================## plot
-pdf("Model-predicted-and-observed.pdf",width=4.5,height=3.5)
+pdf("plots/Model-predicted-and-observed.pdf",width=4.5,height=3.5)
 par(mar=c(3.5,3.5,0.5,1),mgp=c(2,0.5,0),cex.axis=0.9,cex.lab=1.1,tcl=-0.3)
 xlim<-c(min(data$year)+1,max(data$year)-1)
 plot(NA,NA,xlim=xlim,ylim=c(-30,23),xlab="Year",ylab="Mean size-at-age anomaly (mm)")
@@ -526,7 +507,7 @@ x<-pdat$total_return
 y<-pdat$pink_tot_num_lag1
 z<-pdat$SaA_anomaly
 ##================================================================## ggplot
-pdf("Data-SaA-anamoly-vs-return-and-pinks-ggplot.pdf",width=5.5,height=4.2)
+pdf("plots/Data-SaA-anamoly-vs-return-and-pinks-ggplot.pdf",width=5.5,height=4.2)
 par(mar=c(3.5,3.5,1,1),mgp=c(2,0.5,0),cex.lab=1.1,cex.axis=0.9,tcl=-0.3,xaxs="i",yaxs="i")
 pdat %>% ggplot(aes(x=total_return,y=pink_tot_num_lag1,size=SaA_anomaly,col=year))+ 
   geom_point(shape=1,fill=NA,color="black")+
@@ -536,7 +517,7 @@ pdat %>% ggplot(aes(x=total_return,y=pink_tot_num_lag1,size=SaA_anomaly,col=year
   scale_x_continuous(limits=c(0,75),breaks=seq(0,75,10))+
   scale_y_continuous(limits=c(0,750),breaks=seq(0,750,100))+
   theme_classic()+
-  labs(x="Total return (millions)",y="Pink salmon abundance (millions)")+ 
+  labs(x="Bristol Bay sockeye total return (millions)",y="Pink salmon abundance (millions)")+ 
   labs(size="Size-at-age\nanomaly (mm)",color="Return year")+
   theme(strip.background=element_blank(),
         axis.line=element_line(size=0.1),

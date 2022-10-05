@@ -1,0 +1,105 @@
+pkgs<-c("here","tidyr","dplyr")#
+if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(setdiff(pkgs,rownames(installed.packages())),dependencies=T) }#
+invisible(lapply(pkgs,library,character.only=T))#
+homeDir<-here::here()#
+setwd(homeDir)#
+#
+load("data/BBasl_to_2020_clean.Rdata")#
+dat<-BBasl_to_2020_clean#
+count(dat) ## total samples dataset#
+#
+dat <- dat %>% #
+  filter(!(ASLProjectType=='escapement' & RiverSystem=="Alagnak")) %>% #
+  filter(!is.na(ASLProjectType), ASLProjectType !='test fishing') #
+#
+count(dat) ## total samples used in analyses#
+#
+## number of samples per year#
+nSy <- dat %>% #
+  group_by(Year) %>% #
+  summarize(n=n())
+## number of samples by ASL project type#
+nSt <- dat %>% #
+  group_by(ASLProjectType) %>% #
+  summarize(n=n())
+nSy
+data.frame(nSy)
+nSyt <- dat %>% #
+  group_by(Year,ASLProjectType) %>% #
+  summarize(n=n()) %>%#
+  pivot_wider(names_from=ASLProjectType,values_from=n)
+nSyt
+data.frame(nSyt)
+## number of samples by year and river#
+nSyr <- dat %>% #
+  filter(!is.na(RiverSystem)) %>%#
+  group_by(Year,RiverSystem) %>% #
+  summarize(n=n()) %>%#
+  pivot_wider(names_from=RiverSystem,values_from=n)
+data.frame(nSyr)
+nSyr_esc <- dat %>% #
+  filter(ASLProjectType=="escapement") %>%#
+  filter(!is.na(RiverSystem)) %>%#
+  group_by(Year,RiverSystem) %>% #
+  summarize(n=n()) %>%#
+  pivot_wider(names_from=RiverSystem,values_from=n) # %>%#
+  # write.csv("data/AL_samples_esc_by_river.csv")
+nSyr_esc
+nSt <- dat %>% #
+  group_by(ASLProjectType) %>% #
+  summarize(n=n())
+nSt
+nSty <- dat %>% #
+  group_by(Year,ASLProjectType) %>% #
+  summarize(n=n())
+nSty
+## number of escapement samples by year#
+nSyr_esc <- dat %>% #
+  filter(ASLProjectType=="escapement") %>%#
+  filter(!is.na(RiverSystem)) %>%#
+  group_by(Year) %>% #
+  summarize(n=n())
+nSy_esc <- dat %>% #
+  filter(ASLProjectType=="escapement") %>%#
+  filter(!is.na(RiverSystem)) %>%#
+  group_by(Year) %>% #
+  summarize(n=n())
+nSy_esc
+mean(nSy_esc$n)
+nSy_catch <- dat %>% #
+  filter(ASLProjectType=="commercial catch") %>%#
+  filter(!is.na(RiverSystem)) %>%#
+  group_by(Year) %>% #
+  summarize(n=n())#
+mean(nSy_catch$n) ## average number of escapement samples taken per year
+## number of escapement samples by year#
+nSy_esc <- dat %>% #
+  filter(ASLProjectType=="escapement") %>%#
+  group_by(Year) %>% #
+  summarize(n=n())
+mean(nSy_esc$n) ## average number of escapement samples taken per year
+nSy_catch <- dat %>% #
+  filter(ASLProjectType=="commercial catch") %>%#
+  group_by(Year) %>% #
+  summarize(n=n())
+mean(nSy_catch$n) ## average number of escapement samples taken per year
+nSt
+length(unique(dat$Year))
+61*28167.7
+61*19086.78
+nSyr_catch
+nSyr_catch <- dat %>% #
+  filter(ASLProjectType=="commercial catch") %>%#
+  group_by(Year,DistrictName) %>% #
+  summarize(n=n()) %>%#
+  pivot_wider(names_from=DistrictName,values_from=n)
+nSyr_catch
+data.frame(nSyr_catch)
+nSy_catch
+data.frame(nSy_catch)
+nSy_esc
+data.frame(nSy_esc)
+mean(nSy_esc$n[nSy_esc$Year>=1980]) ## average number of escapement samples taken per year
+mean(nSy_catch$n[nSy_catch $Year>=1980]) ## average number of catch samples per year since 1980
+nSyt
+data.frame(nSyt)

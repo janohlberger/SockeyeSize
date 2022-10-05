@@ -8,6 +8,7 @@ if(length(setdiff(pkgs,rownames(installed.packages())))>0) { install.packages(se
 invisible(lapply(pkgs,library,character.only=T))
 homeDir<-here::here()
 setwd(homeDir)
+
 nYref<-5 ## number of years to compare in early and late periods
 highres<-TRUE ## if TRUE use high temporal resolution
 
@@ -163,7 +164,7 @@ BBrecruits<-dplyr::select(recruits,year=Brood.Year)
 BBrecruits$total_recruits<-rowSums(recruits[,-1])*1e-6 ## in millions
 
 ##===============================================================## plot
-pdf("output/Size-at-age-contribution-over-time.pdf",width=8,height=6)
+pdf("plots/Size-at-age-contribution-over-time.pdf",width=8,height=6)
 layout(matrix(c(2,1,1,1,3,1,1,1,4,1,1,1,5,6,7,8),ncol=4,nrow=4,byrow=T))
 par(mar=c(2,2,0,0),oma=c(2,2,1,1),mgp=c(2,0.5,0),tcl=-0.3)
 lnms<-c("mean size","size-at-age")#,"age structure")
